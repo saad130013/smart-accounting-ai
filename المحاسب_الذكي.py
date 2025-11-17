@@ -1,3 +1,22 @@
+import sys
+import subprocess
+
+def install_packages():
+    """تثبيت المكتبات المطلوبة تلقائياً"""
+    required_packages = ['pandas', 'openpyxl', 'numpy']
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+            print(f"✅ {package} مثبت مسبقاً")
+        except ImportError:
+            print(f"📦 جاري تثبيت {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# تثبيت المكتبات أولاً
+install_packages()
+
+# الآن استيراد المكتبات
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -17,24 +36,31 @@ class ProfessionalAccountingSystem:
         try:
             self.df = pd.read_excel(self.file_path)
             print("✅ تم تحميل البيانات بنجاح")
+            print(f"📊 عدد الحركات: {len(self.df)}")
             self.clean_data()
         except Exception as e:
             print(f"❌ خطأ في تحميل الملف: {e}")
+            print("🔍 تأكد من:")
+            print("   - اسم الملف صحيح")
+            print("   - الملف موجود في نفس المجلد")
+            print("   - الملف ليس مفتوح في Excel")
     
     def clean_data(self):
         """تنظيف البيانات ومعالجتها"""
         # تحويل التواريخ
-        self.df['[SA]Processing Date'] = pd.to_datetime(self.df['[SA]Processing Date'])
+        self.df['[SA]Processing Date'] = pd.to_datetime(self.df['[SA]Processing Date'], errors='coerce')
         
         # تنظيف الأعمدة النقدية
-        self.df['مدين'] = pd.to_numeric(self.df['مدين'], errors='coerce').fillna(0)
-        self.df['دائن'] = pd.to_numeric(self.df['دائن'], errors='coerce').fillna(0)
-        self.df['الرصيد'] = pd.to_numeric(self.df['الرصيد'], errors='coerce').fillna(0)
+        numeric_columns = ['مدين', 'دائن', 'الرصيد']
+        for col in numeric_columns:
+            self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
         
         # إضافة أعمدة مساعدة
         self.df['الشهر'] = self.df['[SA]Processing Date'].dt.month
         self.df['السنة'] = self.df['[SA]Processing Date'].dt.year
         
+        print("✅ تم تنظيف البيانات بنجاح")
+    
     def classify_transactions(self):
         """تصنيف الحركات إلى حسابات محاسبية"""
         account_mapping = {
@@ -54,6 +80,8 @@ class ProfessionalAccountingSystem:
         self.df['الحساب المحاسبي'] = self.df['التفاصيل'].map(account_mapping)
         self.df['الحساب المحاسبي'] = self.df['الحساب المحاسبي'].fillna('حسابات متنوعة')
         
+        print("✅ تم تصنيف الحركات محاسبياً")
+    
     def create_journal_entries(self):
         """إنشاء قيود اليومية"""
         print("\n📖 جاري إنشاء قيود اليومية...")
@@ -63,7 +91,7 @@ class ProfessionalAccountingSystem:
             description = row['التفاصيل']
             debit = row['مدين']
             credit = row['دائن']
-            account = row['الحساب المحاسبي']
+            account = row.get('الحساب المحاسبي', 'حسابات متنوعة')
             
             if debit > 0:
                 # قيد مدين
@@ -90,11 +118,15 @@ class ProfessionalAccountingSystem:
                 self.journal_entries.append(entry)
         
         journal_df = pd.DataFrame(self.journal_entries)
+        print(f"✅ تم إنشاء {len(journal_df)} قيد محاسبي")
         return journal_df
     
     def generate_trial_balance(self):
         """إنشاء ميزان المراجعة"""
         print("\n⚖️ جاري إنشاء ميزان المراجعة...")
+        
+        if not self.journal_entries:
+            self.create_journal_entries()
         
         trial_balance = {}
         
@@ -117,14 +149,16 @@ class ProfessionalAccountingSystem:
         # تحويل إلى DataFrame
         tb_data = []
         for account, balances in trial_balance.items():
+            balance = balances['مدين'] - balances['دائن']
             tb_data.append({
                 'الحساب': account,
                 'مجموع المدين': balances['مدين'],
                 'مجموع الدائن': balances['دائن'],
-                'الرصيد': balances['مدين'] - balances['دائن']
+                'الرصيد': balance
             })
         
         trial_balance_df = pd.DataFrame(tb_data)
+        print("✅ تم إنشاء ميزان المراجعة")
         return trial_balance_df
     
     def generate_income_statement(self):
@@ -159,6 +193,7 @@ class ProfessionalAccountingSystem:
             'صافي الدخل': net_income
         }
         
+        print("✅ تم إنشاء قائمة الدخل")
         return income_statement
     
     def generate_cash_flow_statement(self):
@@ -188,14 +223,18 @@ class ProfessionalAccountingSystem:
         # صافي التغير في النقد
         net_cash_change = self.df['دائن'].sum() - self.df['مدين'].sum()
         
+        # إيجاد الرصيد الابتدائي
+        opening_balance = self.df['الرصيد'].iloc[-1] - net_cash_change
+        
         cash_flow_statement = {
             'التدفقات النقدية من الأنشطة التشغيلية': cash_from_operations,
             'التدفقات النقدية من الأنشطة التمويلية': cash_from_financing,
             'صافي الزيادة (النقص) في النقد': net_cash_change,
-            'الرصيد النقدي في بداية الفترة': self.df['الرصيد'].iloc[-1] - net_cash_change,
+            'الرصيد النقدي في بداية الفترة': opening_balance,
             'الرصيد النقدي في نهاية الفترة': self.df['الرصيد'].iloc[-1]
         }
         
+        print("✅ تم إنشاء قائمة التدفقات النقدية")
         return cash_flow_statement
     
     def generate_balance_sheet(self):
@@ -206,7 +245,8 @@ class ProfessionalAccountingSystem:
         cash_balance = self.df['الرصيد'].iloc[-1]
         
         # الخصوم وحقوق الملكية
-        net_income = self.generate_income_statement()['صافي الدخل']
+        income_statement = self.generate_income_statement()
+        net_income = income_statement['صافي الدخل']
         
         balance_sheet = {
             'الأصول': {
@@ -214,7 +254,7 @@ class ProfessionalAccountingSystem:
                 'إجمالي الأصول': cash_balance
             },
             'الخصوم': {
-                'إجمالي الخصوم': 0  # يمكن إضافة الخصوم المستقبلية
+                'إجمالي الخصوم': 0
             },
             'حقوق الملكية': {
                 'صافي الدخل': net_income,
@@ -225,28 +265,47 @@ class ProfessionalAccountingSystem:
         # المعادلة المحاسبية: الأصول = الخصوم + حقوق الملكية
         balance_sheet['الخصوم']['إجمالي الخصوم'] = cash_balance - net_income
         
+        print("✅ تم إنشاء الميزانية العمومية")
         return balance_sheet
     
     def generate_expense_analysis(self):
         """تحليل المصروفات التفصيلي"""
         print("\n📊 جاري إنشاء تحليل المصروفات...")
         
-        expense_analysis = self.df[self.df['مدين'] > 0].groupby('الحساب المحاسبي').agg({
-            'مدين': ['sum', 'count', 'mean'],
-            'الرصيد': 'last'
-        }).round(2)
+        expense_data = self.df[self.df['مدين'] > 0].copy()
         
+        if not expense_data.empty:
+            expense_analysis = expense_data.groupby('الحساب المحاسبي').agg({
+                'مدين': ['sum', 'count', 'mean', 'max'],
+                'الرصيد': 'last'
+            }).round(2)
+            
+            # إعادة تسمية الأعمدة
+            expense_analysis.columns = ['إجمالي المصروفات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ', 'آخر رصيد']
+        else:
+            expense_analysis = pd.DataFrame()
+        
+        print("✅ تم إنشاء تحليل المصروفات")
         return expense_analysis
     
     def generate_revenue_analysis(self):
         """تحليل الإيرادات التفصيلي"""
         print("\n📈 جاري إنشاء تحليل الإيرادات...")
         
-        revenue_analysis = self.df[self.df['دائن'] > 0].groupby('الحساب المحاسبي').agg({
-            'دائن': ['sum', 'count', 'mean'],
-            'الرصيد': 'last'
-        }).round(2)
+        revenue_data = self.df[self.df['دائن'] > 0].copy()
         
+        if not revenue_data.empty:
+            revenue_analysis = revenue_data.groupby('الحساب المحاسبي').agg({
+                'دائن': ['sum', 'count', 'mean', 'max'],
+                'الرصيد': 'last'
+            }).round(2)
+            
+            # إعادة تسمية الأعمدة
+            revenue_analysis.columns = ['إجمالي الإيرادات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ', 'آخر رصيد']
+        else:
+            revenue_analysis = pd.DataFrame()
+        
+        print("✅ تم إنشاء تحليل الإيرادات")
         return revenue_analysis
     
     def generate_monthly_reports(self):
@@ -259,11 +318,16 @@ class ProfessionalAccountingSystem:
             'الرصيد': 'last'
         }).reset_index()
         
+        # حساب صافي التدفق الشهري
+        monthly_data['صافي التدفق'] = monthly_data['دائن'] - monthly_data['مدين']
+        
+        print("✅ تم إنشاء التقارير الشهرية")
         return monthly_data
     
     def generate_comprehensive_report(self):
         """إنشاء التقرير المالي الشامل"""
         print("🚀 بدء إنشاء التقرير المالي الشامل...")
+        print("=" * 50)
         
         # تصنيف الحركات أولاً
         self.classify_transactions()
@@ -280,6 +344,7 @@ class ProfessionalAccountingSystem:
             'التقارير_الشهرية': self.generate_monthly_reports()
         }
         
+        print("=" * 50)
         print("✅ تم إنشاء جميع التقارير بنجاح!")
         return reports
     
@@ -287,61 +352,92 @@ class ProfessionalAccountingSystem:
         """حفظ جميع التقارير في ملف Excel واحد"""
         print(f"\n💾 جاري حفظ التقارير في: {output_path}")
         
-        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            # حفظ قيود اليومية
-            reports['قيود_اليومية'].to_excel(writer, sheet_name='قيود اليومية', index=False)
-            
-            # حفظ ميزان المراجعة
-            reports['ميزان_المراجعة'].to_excel(writer, sheet_name='ميزان المراجعة', index=False)
-            
-            # حفظ قائمة الدخل
-            income_data = []
-            for category, items in reports['قائمة_الدخل'].items():
-                if isinstance(items, dict):
+        try:
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                # حفظ قيود اليومية
+                reports['قيود_اليومية'].to_excel(writer, sheet_name='قيود اليومية', index=False)
+                
+                # حفظ ميزان المراجعة
+                reports['ميزان_المراجعة'].to_excel(writer, sheet_name='ميزان المراجعة', index=False)
+                
+                # حفظ قائمة الدخل
+                income_data = []
+                for category, items in reports['قائمة_الدخل'].items():
+                    if isinstance(items, dict):
+                        for item, value in items.items():
+                            income_data.append({'البند': item, 'المبلغ': value})
+                    else:
+                        income_data.append({'البند': category, 'المبلغ': items})
+                pd.DataFrame(income_data).to_excel(writer, sheet_name='قائمة الدخل', index=False)
+                
+                # حفظ قائمة التدفقات النقدية
+                cash_flow_data = []
+                for item, value in reports['قائمة_التدفقات_النقدية'].items():
+                    cash_flow_data.append({'البند': item, 'المبلغ': value})
+                pd.DataFrame(cash_flow_data).to_excel(writer, sheet_name='التدفقات النقدية', index=False)
+                
+                # حفظ الميزانية العمومية
+                balance_data = []
+                for section, items in reports['الميزانية_العمومية'].items():
+                    balance_data.append({'': section, 'المبلغ': ''})
                     for item, value in items.items():
-                        income_data.append({'البند': item, 'المبلغ': value})
-                else:
-                    income_data.append({'البند': category, 'المبلغ': items})
-            pd.DataFrame(income_data).to_excel(writer, sheet_name='قائمة الدخل', index=False)
+                        balance_data.append({'': item, 'المبلغ': value})
+                pd.DataFrame(balance_data).to_excel(writer, sheet_name='الميزانية العمومية', index=False)
+                
+                # حفظ التحليلات
+                if not reports['تحليل_المصروفات'].empty:
+                    reports['تحليل_المصروفات'].to_excel(writer, sheet_name='تحليل المصروفات')
+                
+                if not reports['تحليل_الإيرادات'].empty:
+                    reports['تحليل_الإيرادات'].to_excel(writer, sheet_name='تحليل الإيرادات')
+                
+                reports['التقارير_الشهرية'].to_excel(writer, sheet_name='التقارير الشهرية', index=False)
             
-            # حفظ قائمة التدفقات النقدية
-            cash_flow_data = []
-            for item, value in reports['قائمة_التدفقات_النقدية'].items():
-                cash_flow_data.append({'البند': item, 'المبلغ': value})
-            pd.DataFrame(cash_flow_data).to_excel(writer, sheet_name='التدفقات النقدية', index=False)
+            print(f"✅ تم حفظ جميع التقارير في: {output_path}")
+            return True
             
-            # حفظ الميزانية العمومية
-            balance_data = []
-            for section, items in reports['الميزانية_العمومية'].items():
-                balance_data.append({'القسم': section, '': ''})
-                for item, value in items.items():
-                    balance_data.append({'القسم': item, 'المبلغ': value})
-            pd.DataFrame(balance_data).to_excel(writer, sheet_name='الميزانية العمومية', index=False)
-            
-            # حفظ التحليلات
-            reports['تحليل_المصروفات'].to_excel(writer, sheet_name='تحليل المصروفات')
-            reports['تحليل_الإيرادات'].to_excel(writer, sheet_name='تحليل الإيرادات')
-            reports['التقارير_الشهرية'].to_excel(writer, sheet_name='التقارير الشهرية', index=False)
-        
-        print(f"✅ تم حفظ جميع التقارير في: {output_path}")
+        except Exception as e:
+            print(f"❌ خطأ في حفظ الملف: {e}")
+            return False
 
-# استخدام البرنامج
 def main():
-    # استبدل المسار بمسار ملفك
+    print("🏦 النظام المحاسبي المتكامل - الإصدار 1.0")
+    print("=" * 50)
+    
+    # اسم ملفك - غير هذا إذا كان اسم ملفك مختلف
     file_path = "bank1 (1).xlsx"
     
-    # إنشاء النظام المحاسبي
-    accounting_system = ProfessionalAccountingSystem(file_path)
-    
-    # إنشاء التقارير الشاملة
-    reports = accounting_system.generate_comprehensive_report()
-    
-    # حفظ التقارير في ملف Excel
-    output_path = "التقارير_المالية_الشاملة.xlsx"
-    accounting_system.save_reports_to_excel(reports, output_path)
-    
-    print("\n🎉 تم الانتهاء من إنشاء النظام المحاسبي المتكامل!")
-    print("📁 يمكنك العثور على جميع التقارير في ملف: التقارير_المالية_الشاملة.xlsx")
+    try:
+        # إنشاء النظام المحاسبي
+        accounting_system = ProfessionalAccountingSystem(file_path)
+        
+        # إنشاء التقارير الشاملة
+        reports = accounting_system.generate_comprehensive_report()
+        
+        # حفظ التقارير في ملف Excel
+        output_path = "التقارير_المالية_الشاملة.xlsx"
+        success = accounting_system.save_reports_to_excel(reports, output_path)
+        
+        if success:
+            print("\n🎉 تم الانتهاء من إنشاء النظام المحاسبي المتكامل!")
+            print("📁 يمكنك العثور على جميع التقارير في ملف: التقارير_المالية_الشاملة.xlsx")
+            
+            # عرض ملخص سريع
+            income = reports['قائمة_الدخل']
+            print(f"\n📈 ملخص سريع:")
+            print(f"   - إجمالي الإيرادات: {income['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
+            print(f"   - إجمالي المصروفات: {income['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
+            print(f"   - صافي الدخل: {income['صافي الدخل']:,.2f} ريال")
+            
+        else:
+            print("\n❌ حدث خطأ في حفظ التقارير")
+            
+    except Exception as e:
+        print(f"\n❌ حدث خطأ: {e}")
+        print("🔍 تأكد من:")
+        print("   - وجود الملف في المكان الصحيح")
+        print("   - تثبيت جميع المكتبات المطلوبة")
+        print("   - أن الملف ليس مفتوح في برنامج آخر")
 
 if __name__ == "__main__":
     main()
