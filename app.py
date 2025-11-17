@@ -31,19 +31,67 @@ class ProfessionalAccountingSystem:
     
     def clean_data(self):
         """تنظيف البيانات ومعالجتها"""
-        # تحويل التواريخ
-        self.df['[SA]Processing Date'] = pd.to_datetime(self.df['[SA]Processing Date'], errors='coerce')
+        try:
+            # تحويل التواريخ
+            date_column = [col for col in self.df.columns if 'Date' in col or 'تاريخ' in col][0]
+            self.df['[SA]Processing Date'] = pd.to_datetime(self.df[date_column], errors='coerce')
+            
+            # البحث عن أعمدة المدين والدائن والرصيد
+            debit_col = [col for col in self.df.columns if 'مدين' in str(col)][0]
+            credit_col = [col for col in self.df.columns if 'دائن' in str(col)][0]
+            balance_col = [col for col in self.df.columns if 'الرصيد' in str(col)][0]
+            details_col = [col for col in self.df.columns if 'التفاصيل' in str(col)][0]
+            
+            # إعادة تسمية الأعمدة لتكون متوافقة مع الكود
+            self.df = self.df.rename(columns={
+                debit_col: 'مدين',
+                credit_col: 'دائن', 
+                balance_col: 'الرصيد',
+                details_col: 'التفاصيل'
+            })
+            
+            # تنظيف الأعمدة النقدية
+            numeric_columns = ['مدين', 'دائن', 'الرصيد']
+            for col in numeric_columns:
+                self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
+            
+            # إضافة أعمدة مساعدة
+            self.df['الشهر'] = self.df['[SA]Processing Date'].dt.month
+            self.df['السنة'] = self.df['[SA]Processing Date'].dt.year
+            
+            st.success("✅ تم تنظيف البيانات بنجاح")
+            st.info(f"🔍 تم التعرف على {len(self.df)} حركة مالية")
+            
+        except Exception as e:
+            st.error(f"❌ خطأ في تنظيف البيانات: {e}")
+            st.info("📋 أسماء الأعمدة الموجودة:")
+            st.write(self.df.columns.tolist())
+    
+    def validate_data(self):
+        """التحقق من صحة البيانات"""
+        st.subheader("🔍 التحقق من البيانات")
         
-        # تنظيف الأعمدة النقدية
-        numeric_columns = ['مدين', 'دائن', 'الرصيد']
-        for col in numeric_columns:
-            self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
+        # عرض عينة من البيانات
+        st.write("عينة من البيانات:")
+        st.dataframe(self.df.head(10))
         
-        # إضافة أعمدة مساعدة
-        self.df['الشهر'] = self.df['[SA]Processing Date'].dt.month
-        self.df['السنة'] = self.df['[SA]Processing Date'].dt.year
+        # عرض إحصائيات أساسية
+        col1, col2, col3 = st.columns(3)
         
-        st.success("✅ تم تنظيف البيانات بنجاح")
+        with col1:
+            st.metric("إجمالي المدين (المصروفات)", f"{self.df['مدين'].sum():,.2f} ريال")
+        
+        with col2:
+            st.metric("إجمالي الدائن (الإيرادات)", f"{self.df['دائن'].sum():,.2f} ريال")
+        
+        with col3:
+            st.metric("الرصيد النهائي", f"{self.df['الرصيد'].iloc[-1]:,.2f} ريال")
+        
+        # التحقق من وجود بيانات المصروفات
+        if self.df['مدين'].sum() == 0:
+            st.warning("⚠️ لم يتم العثور على بيانات المصروفات (المدين)")
+        else:
+            st.success(f"✅ تم العثور على {self.df['مدين'].sum():,.2f} ريال مصروفات")
     
     def classify_transactions(self):
         """تصنيف الحركات إلى حسابات محاسبية"""
@@ -58,11 +106,18 @@ class ProfessionalAccountingSystem:
             'حوالة فورية محلية واردة': 'إيرادات عمليات',
             'استرداد عملية سداد': 'إيرادات متنوعة',
             'سحب نقدي بالريال - صراف الأهلي': 'سحوبات نقدية',
-            'تحويل داخلي وارد': 'إيرادات تحويلات'
+            'تحويل داخلي وارد': 'إيرادات تحويلات',
+            'حوالة محلية واردة': 'إيرادات عمليات',
+            'حوالة فورية محلية واردة': 'إيرادات عمليات'
         }
         
         self.df['الحساب المحاسبي'] = self.df['التفاصيل'].map(account_mapping)
         self.df['الحساب المحاسبي'] = self.df['الحساب المحاسبي'].fillna('حسابات متنوعة')
+        
+        # عرض توزيع الحسابات
+        st.info("📊 توزيع الحركات على الحسابات:")
+        account_distribution = self.df['الحساب المحاسبي'].value_counts()
+        st.write(account_distribution)
     
     def create_journal_entries(self):
         """إنشاء قيود اليومية"""
@@ -177,7 +232,7 @@ class ProfessionalAccountingSystem:
                 operating_activities['مدين'].sum()
             )
             
-            financing_activities = self.df[self.df['الحساب المحاسبي'].isin([
+            financing_activities = self.df[self.df['الحساب المحاسBI'].isin([
                 'مصاريف سداد قروض', 'إيرادات تحويلات'
             ])]
             
@@ -235,8 +290,16 @@ class ProfessionalAccountingSystem:
                 }).round(2)
                 
                 expense_analysis.columns = ['إجمالي المصروفات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ']
+                
+                # إضافة تحليل إضافي
+                st.subheader("📋 تفصيل المصروفات")
+                for account in expense_analysis.index:
+                    total = expense_analysis.loc[account, 'إجمالي المصروفات']
+                    count = expense_analysis.loc[account, 'عدد الحركات']
+                    st.write(f"**{account}**: {total:,.2f} ريال ({count} حركة)")
             else:
                 expense_analysis = pd.DataFrame()
+                st.info("لا توجد بيانات للمصروفات")
             
             return expense_analysis
     
@@ -251,8 +314,16 @@ class ProfessionalAccountingSystem:
                 }).round(2)
                 
                 revenue_analysis.columns = ['إجمالي الإيرادات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ']
+                
+                # إضافة تحليل إضافي
+                st.subheader("📋 تفصيل الإيرادات")
+                for account in revenue_analysis.index:
+                    total = revenue_analysis.loc[account, 'إجمالي الإيرادات']
+                    count = revenue_analysis.loc[account, 'عدد الحركات']
+                    st.write(f"**{account}**: {total:,.2f} ريال ({count} حركة)")
             else:
                 revenue_analysis = pd.DataFrame()
+                st.info("لا توجد بيانات للإيرادات")
             
             return revenue_analysis
     
@@ -267,6 +338,14 @@ class ProfessionalAccountingSystem:
             
             monthly_data['صافي التدفق'] = monthly_data['دائن'] - monthly_data['مدين']
             
+            # إضافة أسماء الأشهر
+            month_names = {
+                1: 'يناير', 2: 'فبراير', 3: 'مارس', 4: 'أبريل', 
+                5: 'مايو', 6: 'يونيو', 7: 'يوليو', 8: 'أغسطس',
+                9: 'سبتمبر', 10: 'أكتوبر', 11: 'نوفمبر', 12: 'ديسمبر'
+            }
+            monthly_data['اسم الشهر'] = monthly_data['الشهر'].map(month_names)
+            
             return monthly_data
 
 # واجهة Streamlit
@@ -279,10 +358,15 @@ def main():
             # إنشاء النظام المحاسبي
             accounting_system = ProfessionalAccountingSystem(uploaded_file)
             
+            # التحقق من البيانات أولاً
+            accounting_system.validate_data()
+            
             # تصنيف الحركات
             accounting_system.classify_transactions()
             
             # إنشاء التقارير
+            st.markdown("## 📊 التقارير المحاسبية")
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -303,10 +387,28 @@ def main():
                     st.subheader("قائمة الدخل")
                     
                     # عرض قائمة الدخل بشكل جميل
-                    st.metric("إجمالي الإيرادات", f"{income_statement['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
-                    st.metric("إجمالي المصروفات", f"{income_statement['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
-                    st.metric("صافي الدخل", f"{income_statement['صافي الدخل']:,.2f} ريال", 
-                             delta=f"{income_statement['صافي الدخل']:,.2f}")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("إجمالي الإيرادات", f"{income_statement['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
+                    
+                    with col2:
+                        st.metric("إجمالي المصروفات", f"{income_statement['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
+                    
+                    with col3:
+                        st.metric("صافي الدخل", f"{income_statement['صافي الدخل']:,.2f} ريال", 
+                                 delta=f"{income_statement['صافي الدخل']:,.2f}")
+                    
+                    # تفصيل الإيرادات والمصروفات
+                    st.subheader("تفصيل الإيرادات")
+                    for revenue_type, amount in income_statement['الإيرادات'].items():
+                        if revenue_type != 'إجمالي الإيرادات':
+                            st.write(f"• {revenue_type}: {amount:,.2f} ريال")
+                    
+                    st.subheader("تفصيل المصروفات")
+                    for expense_type, amount in income_statement['المصروفات'].items():
+                        if expense_type != 'إجمالي المصروفات':
+                            st.write(f"• {expense_type}: {amount:,.2f} ريال")
             
             col4, col5, col6 = st.columns(3)
             
@@ -323,9 +425,18 @@ def main():
                     balance_sheet = accounting_system.generate_balance_sheet()
                     st.subheader("الميزانية العمومية")
                     
-                    for section, items in balance_sheet.items():
-                        st.write(f"**{section}**")
-                        for item, value in items.items():
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**الأصول**")
+                        for item, value in balance_sheet['الأصول'].items():
+                            st.metric(item, f"{value:,.2f} ريال")
+                    
+                    with col2:
+                        st.write("**الخصوم وحقوق الملكية**")
+                        for item, value in balance_sheet['الخصوم'].items():
+                            st.metric(item, f"{value:,.2f} ريال")
+                        for item, value in balance_sheet['حقوق الملكية'].items():
                             st.metric(item, f"{value:,.2f} ريال")
             
             with col6:
@@ -334,8 +445,6 @@ def main():
                     st.subheader("تحليل المصروفات")
                     if not expense_analysis.empty:
                         st.dataframe(expense_analysis, use_container_width=True)
-                    else:
-                        st.info("لا توجد بيانات للمصروفات")
             
             # تحليل الإيرادات
             if st.button("📈 تحليل الإيرادات", use_container_width=True):
@@ -343,14 +452,17 @@ def main():
                 st.subheader("تحليل الإيرادات")
                 if not revenue_analysis.empty:
                     st.dataframe(revenue_analysis, use_container_width=True)
-                else:
-                    st.info("لا توجد بيانات للإيرادات")
             
             # التقارير الشهرية
             if st.button("📅 التقارير الشهرية", use_container_width=True):
                 monthly_reports = accounting_system.generate_monthly_reports()
                 st.subheader("التقارير الشهرية")
                 st.dataframe(monthly_reports, use_container_width=True)
+                
+                # رسم بياني للتغير الشهري
+                st.subheader("📈 التغير الشهري في التدفقات النقدية")
+                monthly_reports['الفترة'] = monthly_reports['اسم الشهر'] + ' ' + monthly_reports['السنة'].astype(str)
+                st.line_chart(monthly_reports.set_index('الفترة')[['مدين', 'دائن', 'صافي التدفق']])
             
             # ملخص سريع
             st.markdown("---")
@@ -360,7 +472,7 @@ def main():
             cash_flow = accounting_system.generate_cash_flow_statement()
             balance_sheet = accounting_system.generate_balance_sheet()
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.metric("💰 إجمالي الإيرادات", f"{income['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
@@ -373,9 +485,14 @@ def main():
             with col3:
                 st.metric("💳 التدفق النقدي الصافي", f"{cash_flow['صافي الزيادة (النقص) في النقد']:,.2f} ريال")
                 st.metric("📊 إجمالي الأصول", f"{balance_sheet['الأصول']['إجمالي الأصول']:,.2f} ريال")
+            
+            with col4:
+                st.metric("📋 عدد الحركات", f"{len(accounting_system.df)}")
+                st.metric("📅 الفترة الزمنية", f"{accounting_system.df['[SA]Processing Date'].min().strftime('%Y-%m-%d')} إلى {accounting_system.df['[SA]Processing Date'].max().strftime('%Y-%m-%d')}")
                 
         except Exception as e:
             st.error(f"❌ حدث خطأ: {e}")
+            st.info("💡 تأكد من أن ملف Excel يحتوي على الأعمدة التالية: تاريخ، مدين، دائن، الرصيد")
     
     else:
         st.info("👆 يرجى رفع ملف كشف الحساب البنكي (Excel) لبدء التحليل")
@@ -389,6 +506,7 @@ def main():
         - 🏦 الميزانية العمومية
         - 📊 تحليل المصروفات والإيرادات
         - 📅 تقارير شهرية
+        - 📋 ملخص سريع للأداء المالي
         """)
 
 if __name__ == "__main__":
