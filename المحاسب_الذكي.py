@@ -1,49 +1,33 @@
-import sys
-import subprocess
-
-def install_packages():
-    """تثبيت المكتبات المطلوبة تلقائياً"""
-    required_packages = ['pandas', 'openpyxl', 'numpy']
-    
-    for package in required_packages:
-        try:
-            __import__(package)
-            print(f"✅ {package} مثبت مسبقاً")
-        except ImportError:
-            print(f"📦 جاري تثبيت {package}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-# تثبيت المكتبات أولاً
-install_packages()
-
-# الآن استيراد المكتبات
+import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
+# إعداد صفحة Streamlit
+st.set_page_config(page_title="المحاسب الذكي", page_icon="🏦", layout="wide")
+
+st.title("🏦 النظام المحاسبي المتكامل")
+st.markdown("---")
+
 class ProfessionalAccountingSystem:
-    def __init__(self, file_path):
-        self.file_path = file_path
+    def __init__(self, uploaded_file):
+        self.uploaded_file = uploaded_file
         self.df = None
         self.journal_entries = []
         self.accounts = {}
         self.load_data()
         
     def load_data(self):
-        """تحميل البيانات من ملف Excel"""
+        """تحميل البيانات من الملف المرفوع"""
         try:
-            self.df = pd.read_excel(self.file_path)
-            print("✅ تم تحميل البيانات بنجاح")
-            print(f"📊 عدد الحركات: {len(self.df)}")
+            self.df = pd.read_excel(self.uploaded_file)
+            st.success("✅ تم تحميل البيانات بنجاح")
+            st.info(f"📊 عدد الحركات: {len(self.df)}")
             self.clean_data()
         except Exception as e:
-            print(f"❌ خطأ في تحميل الملف: {e}")
-            print("🔍 تأكد من:")
-            print("   - اسم الملف صحيح")
-            print("   - الملف موجود في نفس المجلد")
-            print("   - الملف ليس مفتوح في Excel")
+            st.error(f"❌ خطأ في تحميل الملف: {e}")
     
     def clean_data(self):
         """تنظيف البيانات ومعالجتها"""
@@ -59,7 +43,7 @@ class ProfessionalAccountingSystem:
         self.df['الشهر'] = self.df['[SA]Processing Date'].dt.month
         self.df['السنة'] = self.df['[SA]Processing Date'].dt.year
         
-        print("✅ تم تنظيف البيانات بنجاح")
+        st.success("✅ تم تنظيف البيانات بنجاح")
     
     def classify_transactions(self):
         """تصنيف الحركات إلى حسابات محاسبية"""
@@ -79,365 +63,333 @@ class ProfessionalAccountingSystem:
         
         self.df['الحساب المحاسبي'] = self.df['التفاصيل'].map(account_mapping)
         self.df['الحساب المحاسبي'] = self.df['الحساب المحاسبي'].fillna('حسابات متنوعة')
-        
-        print("✅ تم تصنيف الحركات محاسبياً")
     
     def create_journal_entries(self):
         """إنشاء قيود اليومية"""
-        print("\n📖 جاري إنشاء قيود اليومية...")
-        
-        for index, row in self.df.iterrows():
-            date = row['[SA]Processing Date']
-            description = row['التفاصيل']
-            debit = row['مدين']
-            credit = row['دائن']
-            account = row.get('الحساب المحاسبي', 'حسابات متنوعة')
-            
-            if debit > 0:
-                # قيد مدين
-                entry = {
-                    'التاريخ': date,
-                    'الحساب المدين': account,
-                    'المبلغ المدين': debit,
-                    'الحساب الدائن': 'البنك',
-                    'المبلغ الدائن': 0,
-                    'الوصف': description
-                }
-                self.journal_entries.append(entry)
+        with st.spinner('📖 جاري إنشاء قيود اليومية...'):
+            for index, row in self.df.iterrows():
+                date = row['[SA]Processing Date']
+                description = row['التفاصيل']
+                debit = row['مدين']
+                credit = row['دائن']
+                account = row.get('الحساب المحاسبي', 'حسابات متنوعة')
                 
-            if credit > 0:
-                # قيد دائن
-                entry = {
-                    'التاريخ': date,
-                    'الحساب المدين': 'البنك',
-                    'المبلغ المدين': 0,
-                    'الحساب الدائن': account,
-                    'المبلغ الدائن': credit,
-                    'الوصف': description
-                }
-                self.journal_entries.append(entry)
+                if debit > 0:
+                    entry = {
+                        'التاريخ': date,
+                        'الحساب المدين': account,
+                        'المبلغ المدين': debit,
+                        'الحساب الدائن': 'البنك',
+                        'المبلغ الدائن': 0,
+                        'الوصف': description
+                    }
+                    self.journal_entries.append(entry)
+                    
+                if credit > 0:
+                    entry = {
+                        'التاريخ': date,
+                        'الحساب المدين': 'البنك',
+                        'المبلغ المدين': 0,
+                        'الحساب الدائن': account,
+                        'المبلغ الدائن': credit,
+                        'الوصف': description
+                    }
+                    self.journal_entries.append(entry)
         
         journal_df = pd.DataFrame(self.journal_entries)
-        print(f"✅ تم إنشاء {len(journal_df)} قيد محاسبي")
         return journal_df
     
     def generate_trial_balance(self):
         """إنشاء ميزان المراجعة"""
-        print("\n⚖️ جاري إنشاء ميزان المراجعة...")
-        
-        if not self.journal_entries:
-            self.create_journal_entries()
-        
-        trial_balance = {}
-        
-        for entry in self.journal_entries:
-            debit_account = entry['الحساب المدين']
-            credit_account = entry['الحساب الدائن']
-            debit_amount = entry['المبلغ المدين']
-            credit_amount = entry['المبلغ الدائن']
+        with st.spinner('⚖️ جاري إنشاء ميزان المراجعة...'):
+            if not self.journal_entries:
+                self.create_journal_entries()
             
-            # تحديث الحسابات المدينة
-            if debit_account not in trial_balance:
-                trial_balance[debit_account] = {'مدين': 0, 'دائن': 0}
-            trial_balance[debit_account]['مدين'] += debit_amount
+            trial_balance = {}
             
-            # تحديث الحسابات الدائنة
-            if credit_account not in trial_balance:
-                trial_balance[credit_account] = {'مدين': 0, 'دائن': 0}
-            trial_balance[credit_account]['دائن'] += credit_amount
-        
-        # تحويل إلى DataFrame
-        tb_data = []
-        for account, balances in trial_balance.items():
-            balance = balances['مدين'] - balances['دائن']
-            tb_data.append({
-                'الحساب': account,
-                'مجموع المدين': balances['مدين'],
-                'مجموع الدائن': balances['دائن'],
-                'الرصيد': balance
-            })
-        
-        trial_balance_df = pd.DataFrame(tb_data)
-        print("✅ تم إنشاء ميزان المراجعة")
-        return trial_balance_df
+            for entry in self.journal_entries:
+                debit_account = entry['الحساب المدين']
+                credit_account = entry['الحساب الدائن']
+                debit_amount = entry['المبلغ المدين']
+                credit_amount = entry['المبلغ الدائن']
+                
+                if debit_account not in trial_balance:
+                    trial_balance[debit_account] = {'مدين': 0, 'دائن': 0}
+                trial_balance[debit_account]['مدين'] += debit_amount
+                
+                if credit_account not in trial_balance:
+                    trial_balance[credit_account] = {'مدين': 0, 'دائن': 0}
+                trial_balance[credit_account]['دائن'] += credit_amount
+            
+            tb_data = []
+            for account, balances in trial_balance.items():
+                balance = balances['مدين'] - balances['دائن']
+                tb_data.append({
+                    'الحساب': account,
+                    'مجموع المدين': balances['مدين'],
+                    'مجموع الدائن': balances['دائن'],
+                    'الرصيد': balance
+                })
+            
+            trial_balance_df = pd.DataFrame(tb_data)
+            return trial_balance_df
     
     def generate_income_statement(self):
         """إنشاء قائمة الدخل"""
-        print("\n📈 جاري إنشاء قائمة الدخل...")
-        
-        # تجميع الإيرادات
-        revenue_accounts = ['إيرادات عمليات', 'إيرادات تحويلات', 'إيرادات متنوعة']
-        total_revenue = self.df[self.df['الحساب المحاسبي'].isin(revenue_accounts)]['دائن'].sum()
-        
-        # تجميع المصروفات
-        expense_accounts = ['مصاريف تشغيل', 'مصاريف مشتريات', 'مصاريف ضرائب', 'مصاريف بنكية', 'مصاريف سداد قروض']
-        total_expenses = self.df[self.df['الحساب المحاسبي'].isin(expense_accounts)]['مدين'].sum()
-        
-        net_income = total_revenue - total_expenses
-        
-        income_statement = {
-            'الإيرادات': {
-                'إيرادات العمليات': self.df[self.df['الحساب المحاسبي'] == 'إيرادات عمليات']['دائن'].sum(),
-                'إيرادات التحويلات': self.df[self.df['الحساب المحاسبي'] == 'إيرادات تحويلات']['دائن'].sum(),
-                'إيرادات متنوعة': self.df[self.df['الحساب المحاسبي'] == 'إيرادات متنوعة']['دائن'].sum(),
-                'إجمالي الإيرادات': total_revenue
-            },
-            'المصروفات': {
-                'مصاريف تشغيل': self.df[self.df['الحساب المحاسبي'] == 'مصاريف تشغيل']['مدين'].sum(),
-                'مصاريف مشتريات': self.df[self.df['الحساب المحاسبي'] == 'مصاريف مشتريات']['مدين'].sum(),
-                'مصاريف ضرائب': self.df[self.df['الحساب المحاسبي'] == 'مصاريف ضرائب']['مدين'].sum(),
-                'مصاريف بنكية': self.df[self.df['الحساب المحاسبي'] == 'مصاريف بنكية']['مدين'].sum(),
-                'مصاريف سداد قروض': self.df[self.df['الحساب المحاسبي'] == 'مصاريف سداد قروض']['مدين'].sum(),
-                'إجمالي المصروفات': total_expenses
-            },
-            'صافي الدخل': net_income
-        }
-        
-        print("✅ تم إنشاء قائمة الدخل")
-        return income_statement
+        with st.spinner('📈 جاري إنشاء قائمة الدخل...'):
+            revenue_accounts = ['إيرادات عمليات', 'إيرادات تحويلات', 'إيرادات متنوعة']
+            total_revenue = self.df[self.df['الحساب المحاسبي'].isin(revenue_accounts)]['دائن'].sum()
+            
+            expense_accounts = ['مصاريف تشغيل', 'مصاريف مشتريات', 'مصاريف ضرائب', 'مصاريف بنكية', 'مصاريف سداد قروض']
+            total_expenses = self.df[self.df['الحساب المحاسبي'].isin(expense_accounts)]['مدين'].sum()
+            
+            net_income = total_revenue - total_expenses
+            
+            income_statement = {
+                'الإيرادات': {
+                    'إيرادات العمليات': self.df[self.df['الحساب المحاسبي'] == 'إيرادات عمليات']['دائن'].sum(),
+                    'إيرادات التحويلات': self.df[self.df['الحساب المحاسبي'] == 'إيرادات تحويلات']['دائن'].sum(),
+                    'إيرادات متنوعة': self.df[self.df['الحساب المحاسبي'] == 'إيرادات متنوعة']['دائن'].sum(),
+                    'إجمالي الإيرادات': total_revenue
+                },
+                'المصروفات': {
+                    'مصاريف تشغيل': self.df[self.df['الحساب المحاسبي'] == 'مصاريف تشغيل']['مدين'].sum(),
+                    'مصاريف مشتريات': self.df[self.df['الحساب المحاسبي'] == 'مصاريف مشتريات']['مدين'].sum(),
+                    'مصاريف ضرائب': self.df[self.df['الحساب المحاسبي'] == 'مصاريف ضرائب']['مدين'].sum(),
+                    'مصاريف بنكية': self.df[self.df['الحساب المحاسبي'] == 'مصاريف بنكية']['مدين'].sum(),
+                    'مصاريف سداد قروض': self.df[self.df['الحساب المحاسبي'] == 'مصاريف سداد قروض']['مدين'].sum(),
+                    'إجمالي المصروفات': total_expenses
+                },
+                'صافي الدخل': net_income
+            }
+            
+            return income_statement
     
     def generate_cash_flow_statement(self):
         """إنشاء قائمة التدفقات النقدية"""
-        print("\n💸 جاري إنشاء قائمة التدفقات النقدية...")
-        
-        # التدفقات من الأنشطة التشغيلية
-        operating_activities = self.df[self.df['الحساب المحاسبي'].isin([
-            'إيرادات عمليات', 'مصاريف تشغيل', 'مصاريف مشتريات'
-        ])]
-        
-        cash_from_operations = (
-            operating_activities['دائن'].sum() - 
-            operating_activities['مدين'].sum()
-        )
-        
-        # التدفقات من الأنشطة التمويلية
-        financing_activities = self.df[self.df['الحساب المحاسبي'].isin([
-            'مصاريف سداد قروض', 'إيرادات تحويلات'
-        ])]
-        
-        cash_from_financing = (
-            financing_activities['دائن'].sum() - 
-            financing_activities['مدين'].sum()
-        )
-        
-        # صافي التغير في النقد
-        net_cash_change = self.df['دائن'].sum() - self.df['مدين'].sum()
-        
-        # إيجاد الرصيد الابتدائي
-        opening_balance = self.df['الرصيد'].iloc[-1] - net_cash_change
-        
-        cash_flow_statement = {
-            'التدفقات النقدية من الأنشطة التشغيلية': cash_from_operations,
-            'التدفقات النقدية من الأنشطة التمويلية': cash_from_financing,
-            'صافي الزيادة (النقص) في النقد': net_cash_change,
-            'الرصيد النقدي في بداية الفترة': opening_balance,
-            'الرصيد النقدي في نهاية الفترة': self.df['الرصيد'].iloc[-1]
-        }
-        
-        print("✅ تم إنشاء قائمة التدفقات النقدية")
-        return cash_flow_statement
+        with st.spinner('💸 جاري إنشاء قائمة التدفقات النقدية...'):
+            operating_activities = self.df[self.df['الحساب المحاسبي'].isin([
+                'إيرادات عمليات', 'مصاريف تشغيل', 'مصاريف مشتريات'
+            ])]
+            
+            cash_from_operations = (
+                operating_activities['دائن'].sum() - 
+                operating_activities['مدين'].sum()
+            )
+            
+            financing_activities = self.df[self.df['الحساب المحاسبي'].isin([
+                'مصاريف سداد قروض', 'إيرادات تحويلات'
+            ])]
+            
+            cash_from_financing = (
+                financing_activities['دائن'].sum() - 
+                financing_activities['مدين'].sum()
+            )
+            
+            net_cash_change = self.df['دائن'].sum() - self.df['مدين'].sum()
+            opening_balance = self.df['الرصيد'].iloc[-1] - net_cash_change
+            
+            cash_flow_statement = {
+                'التدفقات النقدية من الأنشطة التشغيلية': cash_from_operations,
+                'التدفقات النقدية من الأنشطة التمويلية': cash_from_financing,
+                'صافي الزيادة (النقص) في النقد': net_cash_change,
+                'الرصيد النقدي في بداية الفترة': opening_balance,
+                'الرصيد النقدي في نهاية الفترة': self.df['الرصيد'].iloc[-1]
+            }
+            
+            return cash_flow_statement
     
     def generate_balance_sheet(self):
         """إنشاء الميزانية العمومية"""
-        print("\n🏦 جاري إنشاء الميزانية العمومية...")
-        
-        # الأصول
-        cash_balance = self.df['الرصيد'].iloc[-1]
-        
-        # الخصوم وحقوق الملكية
-        income_statement = self.generate_income_statement()
-        net_income = income_statement['صافي الدخل']
-        
-        balance_sheet = {
-            'الأصول': {
-                'النقد والبنك': cash_balance,
-                'إجمالي الأصول': cash_balance
-            },
-            'الخصوم': {
-                'إجمالي الخصوم': 0
-            },
-            'حقوق الملكية': {
-                'صافي الدخل': net_income,
-                'إجمالي حقوق الملكية': net_income
+        with st.spinner('🏦 جاري إنشاء الميزانية العمومية...'):
+            cash_balance = self.df['الرصيد'].iloc[-1]
+            income_statement = self.generate_income_statement()
+            net_income = income_statement['صافي الدخل']
+            
+            balance_sheet = {
+                'الأصول': {
+                    'النقد والبنك': cash_balance,
+                    'إجمالي الأصول': cash_balance
+                },
+                'الخصوم': {
+                    'إجمالي الخصوم': 0
+                },
+                'حقوق الملكية': {
+                    'صافي الدخل': net_income,
+                    'إجمالي حقوق الملكية': net_income
+                }
             }
-        }
-        
-        # المعادلة المحاسبية: الأصول = الخصوم + حقوق الملكية
-        balance_sheet['الخصوم']['إجمالي الخصوم'] = cash_balance - net_income
-        
-        print("✅ تم إنشاء الميزانية العمومية")
-        return balance_sheet
+            
+            balance_sheet['الخصوم']['إجمالي الخصوم'] = cash_balance - net_income
+            
+            return balance_sheet
     
     def generate_expense_analysis(self):
         """تحليل المصروفات التفصيلي"""
-        print("\n📊 جاري إنشاء تحليل المصروفات...")
-        
-        expense_data = self.df[self.df['مدين'] > 0].copy()
-        
-        if not expense_data.empty:
-            expense_analysis = expense_data.groupby('الحساب المحاسبي').agg({
-                'مدين': ['sum', 'count', 'mean', 'max'],
-                'الرصيد': 'last'
-            }).round(2)
+        with st.spinner('📊 جاري إنشاء تحليل المصروفات...'):
+            expense_data = self.df[self.df['مدين'] > 0].copy()
             
-            # إعادة تسمية الأعمدة
-            expense_analysis.columns = ['إجمالي المصروفات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ', 'آخر رصيد']
-        else:
-            expense_analysis = pd.DataFrame()
-        
-        print("✅ تم إنشاء تحليل المصروفات")
-        return expense_analysis
+            if not expense_data.empty:
+                expense_analysis = expense_data.groupby('الحساب المحاسبي').agg({
+                    'مدين': ['sum', 'count', 'mean', 'max']
+                }).round(2)
+                
+                expense_analysis.columns = ['إجمالي المصروفات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ']
+            else:
+                expense_analysis = pd.DataFrame()
+            
+            return expense_analysis
     
     def generate_revenue_analysis(self):
         """تحليل الإيرادات التفصيلي"""
-        print("\n📈 جاري إنشاء تحليل الإيرادات...")
-        
-        revenue_data = self.df[self.df['دائن'] > 0].copy()
-        
-        if not revenue_data.empty:
-            revenue_analysis = revenue_data.groupby('الحساب المحاسبي').agg({
-                'دائن': ['sum', 'count', 'mean', 'max'],
-                'الرصيد': 'last'
-            }).round(2)
+        with st.spinner('📈 جاري إنشاء تحليل الإيرادات...'):
+            revenue_data = self.df[self.df['دائن'] > 0].copy()
             
-            # إعادة تسمية الأعمدة
-            revenue_analysis.columns = ['إجمالي الإيرادات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ', 'آخر رصيد']
-        else:
-            revenue_analysis = pd.DataFrame()
-        
-        print("✅ تم إنشاء تحليل الإيرادات")
-        return revenue_analysis
+            if not revenue_data.empty:
+                revenue_analysis = revenue_data.groupby('الحساب المحاسبي').agg({
+                    'دائن': ['sum', 'count', 'mean', 'max']
+                }).round(2)
+                
+                revenue_analysis.columns = ['إجمالي الإيرادات', 'عدد الحركات', 'متوسط المبلغ', 'أعلى مبلغ']
+            else:
+                revenue_analysis = pd.DataFrame()
+            
+            return revenue_analysis
     
     def generate_monthly_reports(self):
         """إنشاء تقارير شهرية"""
-        print("\n📅 جاري إنشاء التقارير الشهرية...")
-        
-        monthly_data = self.df.groupby(['السنة', 'الشهر']).agg({
-            'مدين': 'sum',
-            'دائن': 'sum',
-            'الرصيد': 'last'
-        }).reset_index()
-        
-        # حساب صافي التدفق الشهري
-        monthly_data['صافي التدفق'] = monthly_data['دائن'] - monthly_data['مدين']
-        
-        print("✅ تم إنشاء التقارير الشهرية")
-        return monthly_data
-    
-    def generate_comprehensive_report(self):
-        """إنشاء التقرير المالي الشامل"""
-        print("🚀 بدء إنشاء التقرير المالي الشامل...")
-        print("=" * 50)
-        
-        # تصنيف الحركات أولاً
-        self.classify_transactions()
-        
-        # إنشاء جميع التقارير
-        reports = {
-            'قيود_اليومية': self.create_journal_entries(),
-            'ميزان_المراجعة': self.generate_trial_balance(),
-            'قائمة_الدخل': self.generate_income_statement(),
-            'قائمة_التدفقات_النقدية': self.generate_cash_flow_statement(),
-            'الميزانية_العمومية': self.generate_balance_sheet(),
-            'تحليل_المصروفات': self.generate_expense_analysis(),
-            'تحليل_الإيرادات': self.generate_revenue_analysis(),
-            'التقارير_الشهرية': self.generate_monthly_reports()
-        }
-        
-        print("=" * 50)
-        print("✅ تم إنشاء جميع التقارير بنجاح!")
-        return reports
-    
-    def save_reports_to_excel(self, reports, output_path):
-        """حفظ جميع التقارير في ملف Excel واحد"""
-        print(f"\n💾 جاري حفظ التقارير في: {output_path}")
-        
-        try:
-            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                # حفظ قيود اليومية
-                reports['قيود_اليومية'].to_excel(writer, sheet_name='قيود اليومية', index=False)
-                
-                # حفظ ميزان المراجعة
-                reports['ميزان_المراجعة'].to_excel(writer, sheet_name='ميزان المراجعة', index=False)
-                
-                # حفظ قائمة الدخل
-                income_data = []
-                for category, items in reports['قائمة_الدخل'].items():
-                    if isinstance(items, dict):
-                        for item, value in items.items():
-                            income_data.append({'البند': item, 'المبلغ': value})
-                    else:
-                        income_data.append({'البند': category, 'المبلغ': items})
-                pd.DataFrame(income_data).to_excel(writer, sheet_name='قائمة الدخل', index=False)
-                
-                # حفظ قائمة التدفقات النقدية
-                cash_flow_data = []
-                for item, value in reports['قائمة_التدفقات_النقدية'].items():
-                    cash_flow_data.append({'البند': item, 'المبلغ': value})
-                pd.DataFrame(cash_flow_data).to_excel(writer, sheet_name='التدفقات النقدية', index=False)
-                
-                # حفظ الميزانية العمومية
-                balance_data = []
-                for section, items in reports['الميزانية_العمومية'].items():
-                    balance_data.append({'': section, 'المبلغ': ''})
-                    for item, value in items.items():
-                        balance_data.append({'': item, 'المبلغ': value})
-                pd.DataFrame(balance_data).to_excel(writer, sheet_name='الميزانية العمومية', index=False)
-                
-                # حفظ التحليلات
-                if not reports['تحليل_المصروفات'].empty:
-                    reports['تحليل_المصروفات'].to_excel(writer, sheet_name='تحليل المصروفات')
-                
-                if not reports['تحليل_الإيرادات'].empty:
-                    reports['تحليل_الإيرادات'].to_excel(writer, sheet_name='تحليل الإيرادات')
-                
-                reports['التقارير_الشهرية'].to_excel(writer, sheet_name='التقارير الشهرية', index=False)
+        with st.spinner('📅 جاري إنشاء التقارير الشهرية...'):
+            monthly_data = self.df.groupby(['السنة', 'الشهر']).agg({
+                'مدين': 'sum',
+                'دائن': 'sum',
+                'الرصيد': 'last'
+            }).reset_index()
             
-            print(f"✅ تم حفظ جميع التقارير في: {output_path}")
-            return True
+            monthly_data['صافي التدفق'] = monthly_data['دائن'] - monthly_data['مدين']
             
-        except Exception as e:
-            print(f"❌ خطأ في حفظ الملف: {e}")
-            return False
+            return monthly_data
 
+# واجهة Streamlit
 def main():
-    print("🏦 النظام المحاسبي المتكامل - الإصدار 1.0")
-    print("=" * 50)
+    st.sidebar.title("📁 رفع الملف")
+    uploaded_file = st.sidebar.file_uploader("اختر ملف كشف الحساب البنكي (Excel)", type=['xlsx', 'xls'])
     
-    # اسم ملفك - غير هذا إذا كان اسم ملفك مختلف
-    file_path = "bank1 (1).xlsx"
+    if uploaded_file is not None:
+        try:
+            # إنشاء النظام المحاسبي
+            accounting_system = ProfessionalAccountingSystem(uploaded_file)
+            
+            # تصنيف الحركات
+            accounting_system.classify_transactions()
+            
+            # إنشاء التقارير
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("📖 قيود اليومية", use_container_width=True):
+                    journal_entries = accounting_system.create_journal_entries()
+                    st.subheader("قيود اليومية")
+                    st.dataframe(journal_entries, use_container_width=True)
+            
+            with col2:
+                if st.button("⚖️ ميزان المراجعة", use_container_width=True):
+                    trial_balance = accounting_system.generate_trial_balance()
+                    st.subheader("ميزان المراجعة")
+                    st.dataframe(trial_balance, use_container_width=True)
+            
+            with col3:
+                if st.button("📈 قائمة الدخل", use_container_width=True):
+                    income_statement = accounting_system.generate_income_statement()
+                    st.subheader("قائمة الدخل")
+                    
+                    # عرض قائمة الدخل بشكل جميل
+                    st.metric("إجمالي الإيرادات", f"{income_statement['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
+                    st.metric("إجمالي المصروفات", f"{income_statement['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
+                    st.metric("صافي الدخل", f"{income_statement['صافي الدخل']:,.2f} ريال", 
+                             delta=f"{income_statement['صافي الدخل']:,.2f}")
+            
+            col4, col5, col6 = st.columns(3)
+            
+            with col4:
+                if st.button("💸 التدفقات النقدية", use_container_width=True):
+                    cash_flow = accounting_system.generate_cash_flow_statement()
+                    st.subheader("قائمة التدفقات النقدية")
+                    
+                    for item, value in cash_flow.items():
+                        st.metric(item, f"{value:,.2f} ريال")
+            
+            with col5:
+                if st.button("🏦 الميزانية العمومية", use_container_width=True):
+                    balance_sheet = accounting_system.generate_balance_sheet()
+                    st.subheader("الميزانية العمومية")
+                    
+                    for section, items in balance_sheet.items():
+                        st.write(f"**{section}**")
+                        for item, value in items.items():
+                            st.metric(item, f"{value:,.2f} ريال")
+            
+            with col6:
+                if st.button("📊 تحليل المصروفات", use_container_width=True):
+                    expense_analysis = accounting_system.generate_expense_analysis()
+                    st.subheader("تحليل المصروفات")
+                    if not expense_analysis.empty:
+                        st.dataframe(expense_analysis, use_container_width=True)
+                    else:
+                        st.info("لا توجد بيانات للمصروفات")
+            
+            # تحليل الإيرادات
+            if st.button("📈 تحليل الإيرادات", use_container_width=True):
+                revenue_analysis = accounting_system.generate_revenue_analysis()
+                st.subheader("تحليل الإيرادات")
+                if not revenue_analysis.empty:
+                    st.dataframe(revenue_analysis, use_container_width=True)
+                else:
+                    st.info("لا توجد بيانات للإيرادات")
+            
+            # التقارير الشهرية
+            if st.button("📅 التقارير الشهرية", use_container_width=True):
+                monthly_reports = accounting_system.generate_monthly_reports()
+                st.subheader("التقارير الشهرية")
+                st.dataframe(monthly_reports, use_container_width=True)
+            
+            # ملخص سريع
+            st.markdown("---")
+            st.subheader("📋 الملخص السريع")
+            
+            income = accounting_system.generate_income_statement()
+            cash_flow = accounting_system.generate_cash_flow_statement()
+            balance_sheet = accounting_system.generate_balance_sheet()
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("💰 إجمالي الإيرادات", f"{income['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
+                st.metric("💸 إجمالي المصروفات", f"{income['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
+            
+            with col2:
+                st.metric("📈 صافي الدخل", f"{income['صافي الدخل']:,.2f} ريال")
+                st.metric("🏦 الرصيد النهائي", f"{cash_flow['الرصيد النقدي في نهاية الفترة']:,.2f} ريال")
+            
+            with col3:
+                st.metric("💳 التدفق النقدي الصافي", f"{cash_flow['صافي الزيادة (النقص) في النقد']:,.2f} ريال")
+                st.metric("📊 إجمالي الأصول", f"{balance_sheet['الأصول']['إجمالي الأصول']:,.2f} ريال")
+                
+        except Exception as e:
+            st.error(f"❌ حدث خطأ: {e}")
     
-    try:
-        # إنشاء النظام المحاسبي
-        accounting_system = ProfessionalAccountingSystem(file_path)
+    else:
+        st.info("👆 يرجى رفع ملف كشف الحساب البنكي (Excel) لبدء التحليل")
         
-        # إنشاء التقارير الشاملة
-        reports = accounting_system.generate_comprehensive_report()
-        
-        # حفظ التقارير في ملف Excel
-        output_path = "التقارير_المالية_الشاملة.xlsx"
-        success = accounting_system.save_reports_to_excel(reports, output_path)
-        
-        if success:
-            print("\n🎉 تم الانتهاء من إنشاء النظام المحاسبي المتكامل!")
-            print("📁 يمكنك العثور على جميع التقارير في ملف: التقارير_المالية_الشاملة.xlsx")
-            
-            # عرض ملخص سريع
-            income = reports['قائمة_الدخل']
-            print(f"\n📈 ملخص سريع:")
-            print(f"   - إجمالي الإيرادات: {income['الإيرادات']['إجمالي الإيرادات']:,.2f} ريال")
-            print(f"   - إجمالي المصروفات: {income['المصروفات']['إجمالي المصروفات']:,.2f} ريال")
-            print(f"   - صافي الدخل: {income['صافي الدخل']:,.2f} ريال")
-            
-        else:
-            print("\n❌ حدث خطأ في حفظ التقارير")
-            
-    except Exception as e:
-        print(f"\n❌ حدث خطأ: {e}")
-        print("🔍 تأكد من:")
-        print("   - وجود الملف في المكان الصحيح")
-        print("   - تثبيت جميع المكتبات المطلوبة")
-        print("   - أن الملف ليس مفتوح في برنامج آخر")
+        st.markdown("""
+        ### 📋 الميزات المتاحة:
+        - 📖 قيود اليومية المحاسبية
+        - ⚖️ ميزان المراجعة
+        - 📈 قائمة الدخل
+        - 💸 قائمة التدفقات النقدية
+        - 🏦 الميزانية العمومية
+        - 📊 تحليل المصروفات والإيرادات
+        - 📅 تقارير شهرية
+        """)
 
 if __name__ == "__main__":
     main()
